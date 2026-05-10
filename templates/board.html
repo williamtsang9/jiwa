@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="panel">
+    <h2>Kanban Board</h2>
+    <p>Drag-and-drop is not included in MVP; use the move controls on each task.</p>
+  </section>
+
+  <section class="board">
+    {% for status in board_statuses %}
+      <article class="column">
+        <h3>{{ status.replace("_", " ").title() }}</h3>
+        {% set tasks = grouped_tasks[status] %}
+        {% if tasks %}
+          {% for task in tasks %}
+            <div class="task-card">
+              <form method="post" action="/task/update" class="form-grid compact">
+                <input type="hidden" name="task_id" value="{{ task.id }}">
+                <input type="hidden" name="next" value="/board">
+                <input type="text" name="title" value="{{ task.title }}" required>
+                <input type="text" name="description" value="{{ task.description }}" placeholder="Description">
+                <select name="priority">
+                  <option value="low" {% if task.priority == "low" %}selected{% endif %}>Low</option>
+                  <option value="medium" {% if task.priority == "medium" %}selected{% endif %}>Medium</option>
+                  <option value="high" {% if task.priority == "high" %}selected{% endif %}>High</option>
+                </select>
+                <button type="submit">Save</button>
+              </form>
+
+              <div class="actions">
+                <form method="post" action="/board/move">
+                  <input type="hidden" name="task_id" value="{{ task.id }}">
+                  <select name="status">
+                    {% for next_status in board_statuses %}
+                      <option value="{{ next_status }}" {% if next_status == status %}selected{% endif %}>
+                        {{ next_status.replace("_", " ").title() }}
+                      </option>
+                    {% endfor %}
+                    <option value="backlog">Backlog</option>
+                  </select>
+                  <button type="submit">Move</button>
+                </form>
+
+                <form method="post" action="/task/delete">
+                  <input type="hidden" name="task_id" value="{{ task.id }}">
+                  <input type="hidden" name="next" value="/board">
+                  <button type="submit" class="danger">Delete</button>
+                </form>
+              </div>
+            </div>
+          {% endfor %}
+        {% else %}
+          <p class="empty">No tasks</p>
+        {% endif %}
+      </article>
+    {% endfor %}
+  </section>
+{% endblock %}
