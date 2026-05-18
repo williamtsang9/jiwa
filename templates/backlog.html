@@ -1,64 +1,418 @@
 {% extends "base.html" %}
+{% set active_page = "backlog" %}
+
+{% block topbar_actions %}
+  <button class="btn btn-primary" onclick="openCreateModal()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    Create issue
+  </button>
+{% endblock %}
 
 {% block content %}
-  <section class="panel">
-    <h2>Create Backlog Task</h2>
-    <form method="post" action="/backlog/create" class="form-grid">
-      <label>
-        Title
-        <input type="text" name="title" required>
-      </label>
-      <label>
-        Description
-        <textarea name="description" rows="3"></textarea>
-      </label>
-      <label>
-        Priority
-        <select name="priority">
-          <option value="low">Low</option>
-          <option value="medium" selected>Medium</option>
-          <option value="high">High</option>
-        </select>
-      </label>
-      <button type="submit">Add to Backlog</button>
+
+<!-- Stats row -->
+<div class="stats-bar">
+  <div class="stat-card">
+    <div class="stat-card-value">{{ backlog_tasks|length }}</div>
+    <div class="stat-card-label">Backlog items</div>
+  </div>
+  {% set high_count = backlog_tasks | selectattr('priority', 'in', ['high','critical']) | list | length %}
+  <div class="stat-card">
+    <div class="stat-card-value" style="color:var(--p-high)">{{ high_count }}</div>
+    <div class="stat-card-label">High / Critical</div>
+  </div>
+</div>
+
+<!-- Toolbar -->
+<div class="backlog-header">
+  <input type="text" class="search-input" id="backlogSearch" placeholder="Search backlog…" oninput="filterRows()">
+  <select class="filter-select" id="priorityFilter" onchange="filterRows()">
+    <option value="">All priorities</option>
+    <option value="critical">Critical</option>
+    <option value="high">High</option>
+    <option value="medium">Medium</option>
+    <option value="low">Low</option>
+  </select>
+  <div class="ml-auto"></div>
+</div>
+
+<!-- Backlog table -->
+<div class="backlog-section">
+  <div class="backlog-section-header">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+    <span class="backlog-section-title">Backlog</span>
+    <span class="backlog-section-count" id="backlogCount">{{ backlog_tasks|length }}</span>
+    <button class="btn btn-subtle btn-sm" onclick="openCreateModal()">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add
+    </button>
+  </div>
+
+  {% if backlog_tasks %}
+  <table class="backlog-table" id="backlogTable">
+    <thead>
+      <tr>
+        <th style="width:80px">ID</th>
+        <th>Summary</th>
+        <th style="width:100px">Priority</th>
+        <th style="width:160px">Created</th>
+        <th style="width:180px">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for task in backlog_tasks %}
+      <tr id="row-{{ task.id }}"
+          data-id="{{ task.id }}"
+          data-title="{{ task.title | e }}"
+          data-desc="{{ task.description | e }}"
+          data-priority="{{ task.priority }}">
+        <td><span class="ticket-id">JIWA-{{ task.id }}</span></td>
+        <td>
+          <span class="backlog-row-title" onclick="openTicket({{ task.id }})">{{ task.title }}</span>
+          {% if task.description %}
+          <div class="text-sm text-muted" style="margin-top:2px;">{{ task.description[:80] }}{% if task.description|length > 80 %}…{% endif %}</div>
+          {% endif %}
+        </td>
+        <td><span class="badge badge-priority-{{ task.priority }}">{{ task.priority }}</span></td>
+        <td class="text-sm text-muted">{{ task.created_at.strftime('%b %d, %Y') if task.created_at else '—' }}</td>
+        <td>
+          <div class="flex gap-2">
+            <button class="btn btn-primary btn-sm" onclick="promoteTask({{ task.id }}, event)">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="5 9 2 12 5 15"/><path d="M2 12h13M13 5l7 7-7 7"/></svg>
+              To Board
+            </button>
+            <button class="btn btn-subtle btn-sm" onclick="openTicket({{ task.id }})">Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteTask({{ task.id }}, event)">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+            </button>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-backlog" id="emptyState">
+    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="15" x2="12" y2="15"/></svg>
+    <p>Your backlog is empty. Create your first issue to get started.</p>
+    <button class="btn btn-primary mt-2" onclick="openCreateModal()" style="margin-top:12px;">Create issue</button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ══════════════════════════════════════════
+     CREATE ISSUE MODAL
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="createModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div class="modal-title">Create issue</div>
+      <button class="btn-icon" onclick="closeModal('createModal')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <form id="createForm" onsubmit="submitCreate(event)">
+      <div class="modal-body">
+        <div class="form-field">
+          <label class="form-label">Summary <span style="color:var(--p-high)">*</span></label>
+          <input type="text" class="form-input" id="create-title" required placeholder="Enter a short, descriptive title">
+        </div>
+        <div class="form-field">
+          <label class="form-label">Description</label>
+          <textarea class="form-textarea" id="create-desc" placeholder="Add a description…" rows="4"></textarea>
+        </div>
+        <div class="form-field">
+          <label class="form-label">Priority</label>
+          <select class="form-select" id="create-priority">
+            <option value="low">Low</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+            <option value="critical">Critical</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-subtle" onclick="closeModal('createModal')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create issue</button>
+      </div>
     </form>
-  </section>
+  </div>
+</div>
 
-  <section class="panel">
-    <h2>Backlog Tasks</h2>
-    {% if backlog_tasks %}
-      <ul class="task-list">
-        {% for task in backlog_tasks %}
-          <li class="task-card">
-            <form method="post" action="/task/update" class="form-inline">
-              <input type="hidden" name="task_id" value="{{ task.id }}">
-              <input type="hidden" name="next" value="/backlog">
-              <input type="text" name="title" value="{{ task.title }}" required>
-              <input type="text" name="description" value="{{ task.description }}" placeholder="Description">
-              <select name="priority">
-                <option value="low" {% if task.priority == "low" %}selected{% endif %}>Low</option>
-                <option value="medium" {% if task.priority == "medium" %}selected{% endif %}>Medium</option>
-                <option value="high" {% if task.priority == "high" %}selected{% endif %}>High</option>
-              </select>
-              <button type="submit">Save</button>
-            </form>
+<!-- ══════════════════════════════════════════
+     EDIT TICKET MODAL
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="ticketModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div>
+        <div class="ticket-id" id="tm-id"></div>
+        <div class="modal-title" style="font-size:18px;margin-top:2px;" id="tm-title"></div>
+      </div>
+      <button class="btn-icon" onclick="closeModal('ticketModal')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-field">
+        <label class="form-label">Summary</label>
+        <input type="text" class="form-input" id="tm-edit-title" required>
+      </div>
+      <div class="form-field">
+        <label class="form-label">Description</label>
+        <textarea class="form-textarea" id="tm-edit-desc" rows="4"></textarea>
+      </div>
+      <div class="modal-row">
+        <div class="form-field">
+          <label class="form-label">Priority</label>
+          <select class="form-select" id="tm-edit-priority">
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="critical">Critical</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label class="form-label">Move to Board</label>
+          <button type="button" class="btn btn-subtle" id="tm-promote-btn" onclick="promoteFromModal()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 9l7-7 7 7"/><path d="M12 2v14"/><path d="M3 21h18"/></svg>
+            Promote to board
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-danger" onclick="deleteFromModal()">Delete issue</button>
+      <div class="ml-auto" style="display:flex;gap:8px;">
+        <button type="button" class="btn btn-subtle" onclick="closeModal('ticketModal')">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="submitEdit()">Save changes</button>
+      </div>
+    </div>
+  </div>
+</div>
 
-            <div class="actions">
-              <form method="post" action="/backlog/promote">
-                <input type="hidden" name="task_id" value="{{ task.id }}">
-                <button type="submit">Move to Board</button>
-              </form>
-              <form method="post" action="/task/delete">
-                <input type="hidden" name="task_id" value="{{ task.id }}">
-                <input type="hidden" name="next" value="/backlog">
-                <button type="submit" class="danger">Delete</button>
-              </form>
-            </div>
-          </li>
-        {% endfor %}
-      </ul>
-    {% else %}
-      <p>No backlog tasks yet.</p>
-    {% endif %}
-  </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentEditId = null;
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// ── Create ─────────────────────────────────────
+function openCreateModal() {
+  document.getElementById('createForm').reset();
+  openModal('createModal');
+  setTimeout(() => document.getElementById('create-title').focus(), 50);
+}
+
+async function submitCreate(e) {
+  e.preventDefault();
+  const title    = document.getElementById('create-title').value.trim();
+  const desc     = document.getElementById('create-desc').value.trim();
+  const priority = document.getElementById('create-priority').value;
+  if (!title) return;
+
+  try {
+    const res = await fetch('/api/tasks', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({title, description: desc, priority, status: 'backlog'})
+    });
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    closeModal('createModal');
+    addRow(data.task);
+    toast('Issue created', 'success');
+  } catch {
+    toast('Failed to create issue', 'error');
+  }
+}
+
+// ── Edit ───────────────────────────────────────
+function openTicket(id) {
+  currentEditId = id;
+  const row = document.getElementById('row-' + id);
+  if (!row) return;
+  document.getElementById('tm-id').textContent = 'JIWA-' + id;
+  document.getElementById('tm-title').textContent = row.dataset.title;
+  document.getElementById('tm-edit-title').value    = row.dataset.title;
+  document.getElementById('tm-edit-desc').value     = row.dataset.desc;
+  document.getElementById('tm-edit-priority').value = row.dataset.priority;
+  openModal('ticketModal');
+}
+
+async function submitEdit() {
+  const id       = currentEditId;
+  const title    = document.getElementById('tm-edit-title').value.trim();
+  const desc     = document.getElementById('tm-edit-desc').value.trim();
+  const priority = document.getElementById('tm-edit-priority').value;
+  if (!title) return;
+
+  try {
+    const res = await fetch('/api/tasks/' + id, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({title, description: desc, priority})
+    });
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    closeModal('ticketModal');
+    updateRow(data.task);
+    toast('Issue updated', 'success');
+  } catch {
+    toast('Failed to update issue', 'error');
+  }
+}
+
+// ── Delete ─────────────────────────────────────
+async function deleteTask(id, e) {
+  e?.stopPropagation();
+  if (!confirm('Delete this issue? This cannot be undone.')) return;
+  try {
+    const res = await fetch('/api/tasks/' + id, {method: 'DELETE'});
+    if (!res.ok && res.status !== 204) throw new Error();
+    removeRow(id);
+    toast('Issue deleted', 'success');
+  } catch {
+    toast('Failed to delete issue', 'error');
+  }
+}
+async function deleteFromModal() {
+  const id = currentEditId;
+  if (!id || !confirm('Delete this issue? This cannot be undone.')) return;
+  closeModal('ticketModal');
+  await deleteTask(id);
+}
+
+// ── Promote ────────────────────────────────────
+async function promoteTask(id, e) {
+  e?.stopPropagation();
+  try {
+    const res = await fetch('/api/tasks/' + id, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({status: 'to_be_started'})
+    });
+    if (!res.ok) throw new Error();
+    removeRow(id);
+    toast('Issue moved to board', 'success');
+  } catch {
+    toast('Failed to promote issue', 'error');
+  }
+}
+async function promoteFromModal() {
+  const id = currentEditId;
+  if (!id) return;
+  closeModal('ticketModal');
+  await promoteTask(id);
+}
+
+// ── DOM helpers ────────────────────────────────
+function addRow(task) {
+  const tbody = document.querySelector('#backlogTable tbody');
+  const empty = document.getElementById('emptyState');
+  if (empty) {
+    // Replace empty state with table
+    const section = empty.closest('.backlog-section');
+    empty.remove();
+    const table = document.createElement('table');
+    table.className = 'backlog-table';
+    table.id = 'backlogTable';
+    table.innerHTML = `<thead><tr>
+      <th style="width:80px">ID</th><th>Summary</th>
+      <th style="width:100px">Priority</th>
+      <th style="width:160px">Created</th>
+      <th style="width:180px">Actions</th>
+    </tr></thead><tbody></tbody>`;
+    section.appendChild(table);
+  }
+  const tbody2 = document.querySelector('#backlogTable tbody');
+  const tr = document.createElement('tr');
+  tr.id = 'row-' + task.id;
+  tr.dataset.id = task.id;
+  tr.dataset.title = task.title;
+  tr.dataset.desc  = task.description;
+  tr.dataset.priority = task.priority;
+  tr.innerHTML = rowInner(task);
+  tbody2.insertBefore(tr, tbody2.firstChild);
+  updateCount();
+}
+
+function rowInner(task) {
+  return `
+    <td><span class="ticket-id">JIWA-${task.id}</span></td>
+    <td>
+      <span class="backlog-row-title" onclick="openTicket(${task.id})">${escHtml(task.title)}</span>
+      ${task.description ? `<div class="text-sm text-muted" style="margin-top:2px;">${escHtml(task.description.slice(0,80))}${task.description.length>80?'…':''}</div>` : ''}
+    </td>
+    <td><span class="badge badge-priority-${task.priority}">${task.priority}</span></td>
+    <td class="text-sm text-muted">—</td>
+    <td>
+      <div class="flex gap-2">
+        <button class="btn btn-primary btn-sm" onclick="promoteTask(${task.id},event)">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="5 9 2 12 5 15"/><path d="M2 12h13M13 5l7 7-7 7"/></svg>
+          To Board
+        </button>
+        <button class="btn btn-subtle btn-sm" onclick="openTicket(${task.id})">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteTask(${task.id},event)">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
+        </button>
+      </div>
+    </td>`;
+}
+
+function updateRow(task) {
+  const row = document.getElementById('row-' + task.id);
+  if (!row) return;
+  row.dataset.title    = task.title;
+  row.dataset.desc     = task.description;
+  row.dataset.priority = task.priority;
+  row.innerHTML = rowInner(task);
+}
+
+function removeRow(id) {
+  const row = document.getElementById('row-' + id);
+  if (row) row.remove();
+  updateCount();
+  // Show empty state if no rows left
+  const tbody = document.querySelector('#backlogTable tbody');
+  if (tbody && tbody.children.length === 0) {
+    const table = document.getElementById('backlogTable');
+    const section = table?.closest('.backlog-section');
+    if (table) table.remove();
+    if (section) {
+      const em = document.createElement('div');
+      em.className = 'empty-backlog';
+      em.id = 'emptyState';
+      em.innerHTML = `<p>Your backlog is empty.</p>
+        <button class="btn btn-primary" onclick="openCreateModal()" style="margin-top:12px;">Create issue</button>`;
+      section.appendChild(em);
+    }
+  }
+}
+
+function updateCount() {
+  const cnt = document.getElementById('backlogCount');
+  if (!cnt) return;
+  const rows = document.querySelectorAll('#backlogTable tbody tr');
+  cnt.textContent = rows.length;
+}
+
+// ── Filter ─────────────────────────────────────
+function filterRows() {
+  const q  = document.getElementById('backlogSearch').value.toLowerCase();
+  const pr = document.getElementById('priorityFilter').value;
+  document.querySelectorAll('#backlogTable tbody tr').forEach(row => {
+    const matchQ  = !q  || row.dataset.title.toLowerCase().includes(q) || row.dataset.desc.toLowerCase().includes(q);
+    const matchPr = !pr || row.dataset.priority === pr;
+    row.style.display = matchQ && matchPr ? '' : 'none';
+  });
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
 {% endblock %}

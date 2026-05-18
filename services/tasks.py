@@ -40,17 +40,20 @@ class TaskService:
             return session.get(Task, task_id)
 
     @staticmethod
-    def create_task(title: str, description: str = "", priority: str = "medium") -> Task:
+    def create_task(title: str, description: str = "", priority: str = "medium", status: str = STATUS_BACKLOG) -> Task:
         clean_title = title.strip()
         if not clean_title:
             raise ValueError("Title is required.")
+        clean_status = status.strip() if status else STATUS_BACKLOG
+        if clean_status not in ALLOWED_STATUSES:
+            clean_status = STATUS_BACKLOG
 
         with SessionLocal() as session:
             task = Task(
                 title=clean_title,
                 description=(description or "").strip(),
                 priority=(priority or "medium").strip() or "medium",
-                status=STATUS_BACKLOG,
+                status=clean_status,
             )
             session.add(task)
             session.commit()

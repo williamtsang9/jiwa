@@ -1,58 +1,563 @@
 {% extends "base.html" %}
+{% set active_page = "board" %}
+
+{% block topbar_actions %}
+  <button class="btn btn-primary" onclick="openCreateModal()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    Create issue
+  </button>
+{% endblock %}
 
 {% block content %}
-  <section class="panel">
-    <h2>Kanban Board</h2>
-    <p>Drag-and-drop is not included in MVP; use the move controls on each task.</p>
-  </section>
 
-  <section class="board">
-    {% for status in board_statuses %}
-      <article class="column">
-        <h3>{{ status.replace("_", " ").title() }}</h3>
-        {% set tasks = grouped_tasks[status] %}
-        {% if tasks %}
-          {% for task in tasks %}
-            <div class="task-card">
-              <form method="post" action="/task/update" class="form-grid compact">
-                <input type="hidden" name="task_id" value="{{ task.id }}">
-                <input type="hidden" name="next" value="/board">
-                <input type="text" name="title" value="{{ task.title }}" required>
-                <input type="text" name="description" value="{{ task.description }}" placeholder="Description">
-                <select name="priority">
-                  <option value="low" {% if task.priority == "low" %}selected{% endif %}>Low</option>
-                  <option value="medium" {% if task.priority == "medium" %}selected{% endif %}>Medium</option>
-                  <option value="high" {% if task.priority == "high" %}selected{% endif %}>High</option>
-                </select>
-                <button type="submit">Save</button>
-              </form>
+<!-- Stats bar -->
+<div class="stats-bar">
+  {% set total = 0 %}
+  {% set done = 0 %}
+  {% for status, tasks in grouped_tasks.items() %}
+    {% set total = total + tasks|length %}
+    {% if status == 'completed' %}{% set done = tasks|length %}{% endif %}
+  {% endfor %}
+  <div class="stat-card">
+    <div class="stat-card-value">{{ total }}</div>
+    <div class="stat-card-label">Total issues</div>
+  </div>
+  {% for status, tasks in grouped_tasks.items() %}
+  <div class="stat-card">
+    <div class="stat-card-value">{{ tasks|length }}</div>
+    <div class="stat-card-label">{{ status.replace('_',' ').title() }}</div>
+  </div>
+  {% endfor %}
+</div>
 
-              <div class="actions">
-                <form method="post" action="/board/move">
-                  <input type="hidden" name="task_id" value="{{ task.id }}">
-                  <select name="status">
-                    {% for next_status in board_statuses %}
-                      <option value="{{ next_status }}" {% if next_status == status %}selected{% endif %}>
-                        {{ next_status.replace("_", " ").title() }}
-                      </option>
-                    {% endfor %}
-                    <option value="backlog">Backlog</option>
-                  </select>
-                  <button type="submit">Move</button>
-                </form>
+<!-- Toolbar -->
+<div class="board-toolbar">
+  <div class="filter-bar">
+    <input type="text" class="search-input" placeholder="Search issues…" id="boardSearch" oninput="filterCards()">
+    <select class="filter-select" id="priorityFilter" onchange="filterCards()">
+      <option value="">All priorities</option>
+      <option value="critical">Critical</option>
+      <option value="high">High</option>
+      <option value="medium">Medium</option>
+      <option value="low">Low</option>
+    </select>
+  </div>
+</div>
 
-                <form method="post" action="/task/delete">
-                  <input type="hidden" name="task_id" value="{{ task.id }}">
-                  <input type="hidden" name="next" value="/board">
-                  <button type="submit" class="danger">Delete</button>
-                </form>
-              </div>
+<!-- Kanban board -->
+<div class="board-wrap" id="boardWrap">
+  {% set col_labels = {
+    'to_be_started':   'To Do',
+    'in_progress':     'In Progress',
+    'needs_reviewing': 'In Review',
+    'merged':          'Merged',
+    'completed':       'Done'
+  } %}
+  {% set col_colors = {
+    'to_be_started':   '#DFE1E6',
+    'in_progress':     '#4C9AFF',
+    'needs_reviewing': '#8777D9',
+    'merged':          '#F6C342',
+    'completed':       '#36B37E'
+  } %}
+
+  {% for status in board_statuses %}
+  {% set tasks = grouped_tasks[status] %}
+  <div class="kanban-col" data-col="{{ status }}">
+    <div class="kanban-col-header">
+      <span style="width:10px;height:10px;border-radius:50%;background:{{ col_colors[status] }};display:inline-block;flex-shrink:0;"></span>
+      <span class="kanban-col-title">{{ col_labels[status] }}</span>
+      <span class="kanban-col-count" id="count-{{ status }}">{{ tasks|length }}</span>
+    </div>
+
+    <div class="kanban-cards" id="col-{{ status }}"
+         ondragover="onDragOver(event)" ondrop="onDrop(event,'{{ status }}')" ondragleave="onDragLeave(event)">
+      {% if tasks %}
+        {% for task in tasks %}
+        <div class="task-card"
+             id="card-{{ task.id }}"
+             draggable="true"
+             data-id="{{ task.id }}"
+             data-title="{{ task.title | e }}"
+             data-desc="{{ task.description | e }}"
+             data-priority="{{ task.priority }}"
+             data-status="{{ task.status }}"
+             ondragstart="onDragStart(event, {{ task.id }})"
+             ondragend="onDragEnd(event)"
+             onclick="openTicket({{ task.id }})">
+          <div class="task-card-top">
+            <div>
+              <div class="ticket-id">JIWA-{{ task.id }}</div>
+              <div class="task-card-title">{{ task.title }}</div>
             </div>
-          {% endfor %}
-        {% else %}
-          <p class="empty">No tasks</p>
-        {% endif %}
-      </article>
-    {% endfor %}
-  </section>
+          </div>
+          {% if task.description %}
+          <div class="task-card-desc">{{ task.description }}</div>
+          {% endif %}
+          <div class="task-card-meta">
+            <div class="task-card-left">
+              <span class="badge badge-priority-{{ task.priority }}">{{ task.priority }}</span>
+            </div>
+            <div class="task-card-avatar">{{ task.title[0].upper() }}</div>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="empty-col" id="empty-{{ status }}">No issues</div>
+      {% endif %}
+    </div>
+
+    <!-- Quick create toggle -->
+    <div class="quick-create" id="qc-{{ status }}">
+      <input type="text" placeholder="What needs to be done?" id="qc-input-{{ status }}" onkeydown="qcKeydown(event,'{{ status }}')">
+      <div class="quick-create-actions">
+        <button class="btn btn-primary btn-sm" onclick="qcSubmit('{{ status }}')">Create</button>
+        <button class="btn btn-subtle btn-sm" onclick="qcClose('{{ status }}')">Cancel</button>
+      </div>
+    </div>
+    <button class="col-add-btn" onclick="qcOpen('{{ status }}')">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Create issue
+    </button>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- ══════════════════════════════════════════
+     CREATE ISSUE MODAL
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="createModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div class="modal-title">Create issue</div>
+      <button class="btn-icon" onclick="closeModal('createModal')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <form id="createForm" onsubmit="submitCreate(event)">
+      <div class="modal-body">
+        <div class="form-field">
+          <label class="form-label">Summary <span style="color:var(--p-high)">*</span></label>
+          <input type="text" class="form-input" name="title" id="create-title" required placeholder="Enter a short, descriptive title">
+        </div>
+        <div class="form-field">
+          <label class="form-label">Description</label>
+          <textarea class="form-textarea" name="description" id="create-desc" placeholder="Add a description…" rows="4"></textarea>
+        </div>
+        <div class="modal-row">
+          <div class="form-field">
+            <label class="form-label">Priority</label>
+            <select class="form-select" name="priority" id="create-priority">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label class="form-label">Status</label>
+            <select class="form-select" name="status" id="create-status">
+              <option value="backlog">Backlog</option>
+              <option value="to_be_started" selected>To Do</option>
+              <option value="in_progress">In Progress</option>
+              <option value="needs_reviewing">In Review</option>
+              <option value="merged">Merged</option>
+              <option value="completed">Done</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-subtle" onclick="closeModal('createModal')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create issue</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     TICKET DETAIL / EDIT MODAL
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="ticketModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div>
+        <div class="ticket-id" id="tm-id"></div>
+        <div class="modal-title" id="tm-title" style="font-size:18px;margin-top:2px;"></div>
+      </div>
+      <button class="btn-icon" onclick="closeModal('ticketModal')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <form id="ticketForm" onsubmit="submitEdit(event)">
+      <input type="hidden" name="task_id" id="tm-task-id">
+      <input type="hidden" name="next" value="/board">
+      <div class="modal-body">
+        <div class="form-field">
+          <label class="form-label">Summary</label>
+          <input type="text" class="form-input" name="title" id="tm-edit-title" required>
+        </div>
+        <div class="form-field">
+          <label class="form-label">Description</label>
+          <textarea class="form-textarea" name="description" id="tm-edit-desc" rows="4"></textarea>
+        </div>
+        <div class="modal-row">
+          <div class="form-field">
+            <label class="form-label">Priority</label>
+            <select class="form-select" name="priority" id="tm-edit-priority">
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label class="form-label">Status</label>
+            <select class="form-select" name="status" id="tm-edit-status">
+              <option value="backlog">Backlog</option>
+              <option value="to_be_started">To Do</option>
+              <option value="in_progress">In Progress</option>
+              <option value="needs_reviewing">In Review</option>
+              <option value="merged">Merged</option>
+              <option value="completed">Done</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-danger" id="tm-delete-btn" onclick="deleteTicket()">Delete issue</button>
+        <div class="ml-auto" style="display:flex;gap:8px;">
+          <button type="button" class="btn btn-subtle" onclick="closeModal('ticketModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save changes</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── State ──────────────────────────────────────
+let dragId = null;
+
+// ── Open/close modals ──────────────────────────
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// ── Create issue ───────────────────────────────
+function openCreateModal(defaultStatus) {
+  document.getElementById('createForm').reset();
+  if (defaultStatus) document.getElementById('create-status').value = defaultStatus;
+  openModal('createModal');
+  setTimeout(() => document.getElementById('create-title').focus(), 50);
+}
+
+async function submitCreate(e) {
+  e.preventDefault();
+  const title    = document.getElementById('create-title').value.trim();
+  const desc     = document.getElementById('create-desc').value.trim();
+  const priority = document.getElementById('create-priority').value;
+  const status   = document.getElementById('create-status').value;
+
+  if (!title) return;
+
+  try {
+    const res = await fetch('/api/tasks', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({title, description: desc, priority, status})
+    });
+    if (!res.ok) throw new Error('Server error');
+    const data = await res.json();
+    closeModal('createModal');
+    addCardToBoard(data.task);
+    toast('Issue created', 'success');
+  } catch(err) {
+    toast('Failed to create issue', 'error');
+  }
+}
+
+// ── Ticket detail ──────────────────────────────
+function openTicket(id) {
+  const card = document.getElementById('card-' + id);
+  if (!card) return;
+
+  document.getElementById('tm-id').textContent = 'JIWA-' + id;
+  document.getElementById('tm-title').textContent = card.dataset.title;
+  document.getElementById('tm-task-id').value = id;
+  document.getElementById('tm-edit-title').value = card.dataset.title;
+  document.getElementById('tm-edit-desc').value  = card.dataset.desc;
+  document.getElementById('tm-edit-priority').value = card.dataset.priority;
+  document.getElementById('tm-edit-status').value   = card.dataset.status;
+
+  openModal('ticketModal');
+}
+
+async function submitEdit(e) {
+  e.preventDefault();
+  const id       = document.getElementById('tm-task-id').value;
+  const title    = document.getElementById('tm-edit-title').value.trim();
+  const desc     = document.getElementById('tm-edit-desc').value.trim();
+  const priority = document.getElementById('tm-edit-priority').value;
+  const status   = document.getElementById('tm-edit-status').value;
+
+  try {
+    const res = await fetch('/api/tasks/' + id, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({title, description: desc, priority, status})
+    });
+    if (!res.ok) throw new Error('Server error');
+    const data = await res.json();
+    closeModal('ticketModal');
+    refreshCard(data.task);
+    toast('Issue updated', 'success');
+  } catch(err) {
+    toast('Failed to update issue', 'error');
+  }
+}
+
+async function deleteTicket() {
+  const id = document.getElementById('tm-task-id').value;
+  if (!confirm('Delete this issue? This cannot be undone.')) return;
+
+  try {
+    const res = await fetch('/api/tasks/' + id, { method: 'DELETE' });
+    if (!res.ok && res.status !== 204) throw new Error();
+    closeModal('ticketModal');
+    const card = document.getElementById('card-' + id);
+    if (card) {
+      const col  = card.closest('.kanban-cards');
+      const colId = card.closest('.kanban-col').dataset.col;
+      card.remove();
+      updateCount(colId);
+      checkEmpty(colId);
+    }
+    toast('Issue deleted', 'success');
+  } catch {
+    toast('Failed to delete issue', 'error');
+  }
+}
+
+// ── Drag & Drop ────────────────────────────────
+function onDragStart(e, id) {
+  dragId = id;
+  e.dataTransfer.effectAllowed = 'move';
+  setTimeout(() => document.getElementById('card-' + id)?.classList.add('dragging'), 0);
+}
+function onDragEnd(e) {
+  if (dragId) document.getElementById('card-' + dragId)?.classList.remove('dragging');
+}
+function onDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  e.currentTarget.style.background = 'rgba(76,154,255,.08)';
+}
+function onDragLeave(e) {
+  e.currentTarget.style.background = '';
+}
+async function onDrop(e, status) {
+  e.preventDefault();
+  e.currentTarget.style.background = '';
+  if (!dragId) return;
+
+  const card = document.getElementById('card-' + dragId);
+  const oldStatus = card?.dataset.status;
+  if (!card || oldStatus === status) return;
+
+  // Move card in DOM immediately
+  const oldCol = document.getElementById('col-' + oldStatus);
+  const newCol = document.getElementById('col-' + status);
+  newCol.insertBefore(card, newCol.firstChild);
+  card.dataset.status = status;
+
+  updateCount(oldStatus);
+  updateCount(status);
+  checkEmpty(oldStatus);
+  checkEmpty(status);
+
+  // Persist
+  try {
+    const res = await fetch('/api/tasks/' + dragId, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({status})
+    });
+    if (!res.ok) throw new Error();
+    toast('Issue moved to ' + statusLabel(status), 'success');
+  } catch {
+    // Revert
+    if (oldCol) oldCol.insertBefore(card, oldCol.firstChild);
+    card.dataset.status = oldStatus;
+    updateCount(oldStatus);
+    updateCount(status);
+    checkEmpty(oldStatus);
+    checkEmpty(status);
+    toast('Failed to move issue', 'error');
+  }
+  dragId = null;
+}
+
+// ── Quick Create ───────────────────────────────
+function qcOpen(status) {
+  document.querySelectorAll('.quick-create.open').forEach(el => el.classList.remove('open'));
+  const qc = document.getElementById('qc-' + status);
+  qc.classList.add('open');
+  setTimeout(() => document.getElementById('qc-input-' + status)?.focus(), 50);
+}
+function qcClose(status) {
+  document.getElementById('qc-' + status).classList.remove('open');
+  document.getElementById('qc-input-' + status).value = '';
+}
+function qcKeydown(e, status) {
+  if (e.key === 'Enter') { e.preventDefault(); qcSubmit(status); }
+  if (e.key === 'Escape') qcClose(status);
+}
+async function qcSubmit(status) {
+  const input = document.getElementById('qc-input-' + status);
+  const title = input.value.trim();
+  if (!title) return;
+
+  try {
+    const res = await fetch('/api/tasks', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({title, description: '', priority: 'medium', status})
+    });
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    qcClose(status);
+    addCardToBoard(data.task);
+    toast('Issue created', 'success');
+  } catch {
+    toast('Failed to create issue', 'error');
+  }
+}
+
+// ── DOM helpers ────────────────────────────────
+function addCardToBoard(task) {
+  // Remove empty placeholder if present
+  const empty = document.getElementById('empty-' + task.status);
+  if (empty) empty.remove();
+
+  const col = document.getElementById('col-' + task.status);
+  if (!col) return; // might be "backlog" status - skip board
+
+  const card = document.createElement('div');
+  card.className = 'task-card';
+  card.id = 'card-' + task.id;
+  card.draggable = true;
+  card.dataset.id       = task.id;
+  card.dataset.title    = task.title;
+  card.dataset.desc     = task.description;
+  card.dataset.priority = task.priority;
+  card.dataset.status   = task.status;
+  card.setAttribute('ondragstart', `onDragStart(event,${task.id})`);
+  card.setAttribute('ondragend', 'onDragEnd(event)');
+  card.setAttribute('onclick', `openTicket(${task.id})`);
+  card.innerHTML = `
+    <div class="task-card-top">
+      <div>
+        <div class="ticket-id">JIWA-${task.id}</div>
+        <div class="task-card-title">${escHtml(task.title)}</div>
+      </div>
+    </div>
+    ${task.description ? `<div class="task-card-desc">${escHtml(task.description)}</div>` : ''}
+    <div class="task-card-meta">
+      <div class="task-card-left">
+        <span class="badge badge-priority-${task.priority}">${task.priority}</span>
+      </div>
+      <div class="task-card-avatar">${task.title[0].toUpperCase()}</div>
+    </div>`;
+  col.insertBefore(card, col.firstChild);
+  updateCount(task.status);
+}
+
+function refreshCard(task) {
+  const card = document.getElementById('card-' + task.id);
+  if (!card) { addCardToBoard(task); return; }
+
+  const oldStatus = card.dataset.status;
+
+  card.dataset.title    = task.title;
+  card.dataset.desc     = task.description;
+  card.dataset.priority = task.priority;
+  card.dataset.status   = task.status;
+  card.innerHTML = `
+    <div class="task-card-top">
+      <div>
+        <div class="ticket-id">JIWA-${task.id}</div>
+        <div class="task-card-title">${escHtml(task.title)}</div>
+      </div>
+    </div>
+    ${task.description ? `<div class="task-card-desc">${escHtml(task.description)}</div>` : ''}
+    <div class="task-card-meta">
+      <div class="task-card-left">
+        <span class="badge badge-priority-${task.priority}">${task.priority}</span>
+      </div>
+      <div class="task-card-avatar">${task.title[0].toUpperCase()}</div>
+    </div>`;
+
+  // Move column if status changed
+  if (oldStatus !== task.status) {
+    const newCol = document.getElementById('col-' + task.status);
+    if (newCol) {
+      const empty = document.getElementById('empty-' + task.status);
+      if (empty) empty.remove();
+      newCol.insertBefore(card, newCol.firstChild);
+    } else {
+      card.remove(); // e.g. moved to backlog
+    }
+    updateCount(oldStatus);
+    updateCount(task.status);
+    checkEmpty(oldStatus);
+    checkEmpty(task.status);
+  }
+}
+
+function updateCount(status) {
+  const col = document.getElementById('col-' + status);
+  const cnt = document.getElementById('count-' + status);
+  if (!col || !cnt) return;
+  cnt.textContent = col.querySelectorAll('.task-card').length;
+}
+function checkEmpty(status) {
+  const col = document.getElementById('col-' + status);
+  if (!col) return;
+  const hasCards = col.querySelectorAll('.task-card').length > 0;
+  let empty = document.getElementById('empty-' + status);
+  if (hasCards && empty) { empty.remove(); }
+  if (!hasCards && !empty) {
+    empty = document.createElement('div');
+    empty.className = 'empty-col';
+    empty.id = 'empty-' + status;
+    empty.textContent = 'No issues';
+    col.appendChild(empty);
+  }
+}
+
+// ── Filter / search ────────────────────────────
+function filterCards() {
+  const q  = document.getElementById('boardSearch').value.toLowerCase();
+  const pr = document.getElementById('priorityFilter').value;
+  document.querySelectorAll('.task-card').forEach(card => {
+    const matchQ  = !q  || card.dataset.title.toLowerCase().includes(q) || card.dataset.desc.toLowerCase().includes(q);
+    const matchPr = !pr || card.dataset.priority === pr;
+    card.style.display = matchQ && matchPr ? '' : 'none';
+  });
+}
+
+function statusLabel(s) {
+  const map = {
+    to_be_started:'To Do', in_progress:'In Progress',
+    needs_reviewing:'In Review', merged:'Merged', completed:'Done', backlog:'Backlog'
+  };
+  return map[s] || s;
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
 {% endblock %}

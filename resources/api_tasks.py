@@ -15,6 +15,7 @@ class TaskCollectionAPIResource:
             title=payload.get("title", ""),
             description=payload.get("description", ""),
             priority=payload.get("priority", "medium"),
+            status=payload.get("status", "backlog"),
         )
         resp.status = falcon.HTTP_201
         resp.media = {"task": task.to_dict()}

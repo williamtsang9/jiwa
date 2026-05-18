@@ -21,15 +21,25 @@ class BacklogPageResource:
 
 class BacklogCreateResource:
     def on_post(self, req: falcon.Request, resp: falcon.Response) -> None:
-        title = req.get_param("title", required=True)
-        description = req.get_param("description") or ""
-        priority = req.get_param("priority") or "medium"
+        data = req.get_media()
+        title = data.get("title")
+        if not title:
+            raise falcon.HTTPBadRequest("Title is required.")
+        description = data.get("description") or ""
+        priority = data.get("priority") or "medium"
         TaskService.create_task(title=title, description=description, priority=priority)
         raise falcon.HTTPSeeOther("/backlog")
 
 
 class BacklogPromoteResource:
     def on_post(self, req: falcon.Request, resp: falcon.Response) -> None:
-        task_id = req.get_param_as_int("task_id", required=True)
+        data = req.get_media()
+        task_id = data.get("task_id")
+        if not task_id:
+            raise falcon.HTTPBadRequest("Task ID is required.")
+        try:
+            task_id = int(task_id)
+        except ValueError:
+            raise falcon.HTTPBadRequest("Task ID must be an integer.")
         TaskService.promote_backlog_task(task_id)
         raise falcon.HTTPSeeOther("/board")

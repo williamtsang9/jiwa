@@ -1,22 +1,115 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ title }} - Jiwa Kanban</title>
-    <link rel="stylesheet" href="/static/styles.css">
-  </head>
-  <body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }} – Jiwa</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <a href="/board" class="sidebar-logo">
+      <!-- Jiwa logo mark -->
+      <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="32" height="32" rx="6" fill="#4C9AFF"/>
+        <path d="M9 9h6l7 14h-6L9 9z" fill="white"/>
+        <path d="M17 9h6v14h-6V9z" fill="rgba(255,255,255,0.5)"/>
+      </svg>
+      <div>
+        <div class="sidebar-logo-name">Jiwa</div>
+        <div class="sidebar-logo-sub">Software Project</div>
+      </div>
+    </a>
+
+    <nav class="sidebar-nav">
+      <div class="sidebar-section-label">Planning</div>
+
+      <a href="/board" class="sidebar-link {% if active_page == 'board' %}active{% endif %}">
+        <!-- Board icon -->
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <span>Board</span>
+      </a>
+
+      <a href="/backlog" class="sidebar-link {% if active_page == 'backlog' %}active{% endif %}">
+        <!-- Backlog icon -->
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        <span>Backlog</span>
+      </a>
+
+      <div class="sidebar-section-label">Releases</div>
+
+      <a href="/board?filter=completed" class="sidebar-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        <span>Completed</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-avatar">W</div>
+      <div class="sidebar-footer-name">My Project</div>
+    </div>
+  </aside>
+
+  <!-- ── Main area ── -->
+  <div class="main-area">
+
     <header class="topbar">
-      <h1>Jiwa Task Tracker</h1>
-      <nav>
-        <a href="/board">Board</a>
-        <a href="/backlog">Backlog</a>
-      </nav>
+      <div class="topbar-heading">
+        <div class="topbar-breadcrumb">
+          <a href="/">Jiwa</a>
+          <span>›</span>
+          <span>{{ title }}</span>
+        </div>
+        <div class="topbar-title">{{ title }}</div>
+      </div>
+      <div class="topbar-actions">
+        {% block topbar_actions %}{% endblock %}
+      </div>
     </header>
 
-    <main class="container">
+    <main class="page-content">
       {% block content %}{% endblock %}
     </main>
-  </body>
+  </div>
+
+</div>
+
+<!-- ── Toast container ── -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ── Global JS helpers ── -->
+<script>
+function toast(msg, type='success') {
+  const c = document.getElementById('toastContainer');
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.innerHTML = `
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      ${type==='success' ? '<polyline points="20 6 9 17 4 12"/>' : '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>'}
+    </svg>
+    ${msg}`;
+  c.appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// Close modals on overlay click
+document.addEventListener('click', function(e) {
+  if (e.target.classList.contains('modal-overlay')) {
+    e.target.classList.remove('open');
+  }
+});
+
+// Close modals on Escape
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+  }
+});
+</script>
+
+{% block scripts %}{% endblock %}
+</body>
 </html>
